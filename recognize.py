@@ -22,6 +22,10 @@ from matplotlib import pyplot
 from keras.models import load_model
 import pickle
 
+from flask import Flask, render_template, Response
+
+app=Flask(__name__)
+
 MyFaceNet = load_model('facenet_keras.h5')
 
 myfile = open("data.pkl", "rb")
@@ -34,6 +38,7 @@ def detect(opt):
     save_img = not opt.nosave and not source.endswith('.txt')  # save inference images
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
+    print(type(source))
 
     # Directories
     save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run
@@ -117,6 +122,8 @@ def detect(opt):
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
+                #crop = im0
+
                 # Write results
                 for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
                     if save_txt:  # Write to file
@@ -124,6 +131,8 @@ def detect(opt):
                         line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
+
+
 
                     if save_img or opt.save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -133,7 +142,7 @@ def detect(opt):
                    
                         gain = 1.02
                         pad = 10                        
-                   
+
                         xyxy = torch.tensor(xyxy).view(-1, 4)
                         b = xyxy2xywh(xyxy)  # boxes
                         b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
@@ -157,7 +166,6 @@ def detect(opt):
 
             # Stream results
             if view_img:
-
                 gb1 = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
                 
                 gb1 = Image.fromarray(gb1)                       
@@ -182,6 +190,11 @@ def detect(opt):
                 
                 cv2.putText(im0 ,identity, (100,100),cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2, cv2.LINE_AA)
 
+                # #Show video on Flask
+                # ret, buffer = cv2.imencode('.jpg', im0)
+                # frame = buffer.tobytes()
+                # yield (b'--frame\r\n'
+                #        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
                 cv2.imshow('res', im0)
 
                 cv2.waitKey(1)  # 1 millisecond
@@ -190,6 +203,7 @@ def detect(opt):
             if save_img:
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
+                    #print(im0)
                 else:  # 'video' or 'stream'
                     if vid_path != save_path:  # new video
                         vid_path = save_path
@@ -211,6 +225,12 @@ def detect(opt):
 
     print(f'Done. ({time.time() - t0:.3f}s)')
 
+# @app.route('/')
+# def index():
+#     return render_template('index.html')
+# @app.route('/video_feed')
+# def video_feed():
+#     return Response(detect(opt=opt), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -238,6 +258,7 @@ if __name__ == '__main__':
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--kpt-label', type=int, default=5, help='number of keypoints')
+    parser.add_argument('--flask', action='store_true', help='flask app')
     opt = parser.parse_args()
     print(opt)
     check_requirements(exclude=('tensorboard', 'pycocotools', 'thop'))
@@ -248,4 +269,5 @@ if __name__ == '__main__':
                 detect(opt=opt)
                 strip_optimizer(opt.weights)
         else:
+            #app.run(debug=True)
             detect(opt=opt)
