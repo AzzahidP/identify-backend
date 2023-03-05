@@ -9,7 +9,6 @@ app = Flask(__name__)
 cors = CORS(app)
 app.config.from_object(AppConfig)
 
-
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 

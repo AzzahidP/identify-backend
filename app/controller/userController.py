@@ -13,6 +13,8 @@ from utils.general import check_img_size, check_requirements, check_imshow, non_
 from utils.plots import colors, plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 from keras.models import load_model
+from numpy import linalg
+import numpy as np
 import io
 import base64
 
@@ -169,9 +171,18 @@ def save_to_db(full_name, identity_number, vector, gender, birth, address, email
     except Exception as e:
         return jsonify({'status': 'failed', 'message': {str(e)}})
     
-def get_name_and_vector():
-    query = User.query.with_entities(User.full_name,User.vector)
-    return query
+def verify_from_db(min_dist, vector_input):
+    db = User.query.with_entities(User.full_name,User.vector)
+    for rows in db:
+        vector_db = rows.vector
+        vector_db = np.fromstring(vector_db[2:-2], sep=' ') 
+        dist = linalg.norm(vector_input - vector_db)
+        if dist < min_dist:
+            min_dist = dist
+            identity = rows.full_name 
+        else:
+            identity = 'unknown' 
+    return identity
 
 def get_all_details(key):
     query = User.query.filter_by(full_name=key).first()
