@@ -40,7 +40,7 @@ def verification():
         
         # Mencari identitas yang sesuai
         min_dist=10
-        identity = userController.verify_from_db(min_dist, vector_input)
+        identity= userController.verify_from_db(min_dist, vector_input)
 
         if input['nama']==identity:
             details = userController.get_all_details(identity)

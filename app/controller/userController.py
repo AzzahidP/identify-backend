@@ -160,8 +160,6 @@ def create_signature(source,
             return 'gagal',[]
 
 
-
-
 def save_to_db(full_name, identity_number, vector, gender, birth, address, email):
     try:
         new_user = User(full_name=full_name, identity_number=identity_number, vector=vector, gender=gender, birth=birth, address=address, email=email)
@@ -173,15 +171,16 @@ def save_to_db(full_name, identity_number, vector, gender, birth, address, email
     
 def verify_from_db(min_dist, vector_input):
     db = User.query.with_entities(User.full_name,User.vector)
+    identity = 'unknown' 
     for rows in db:
         vector_db = rows.vector
         vector_db = np.fromstring(vector_db[2:-2], sep=' ') 
         dist = linalg.norm(vector_input - vector_db)
+        print(dist)
         if dist < min_dist:
             min_dist = dist
             identity = rows.full_name 
-        else:
-            identity = 'unknown' 
+            
     return identity
 
 def get_all_details(key):
