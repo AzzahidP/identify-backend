@@ -12,14 +12,16 @@ from utils.general import check_img_size, check_requirements, check_imshow, non_
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box, xywh2xyxy, clip_coords 
 from utils.plots import colors, plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
-from keras.models import load_model
 from numpy import linalg
 import numpy as np
 import io
 import base64
+import dlib
+from keras_facenet import FaceNet
 
-
-MyFaceNet = load_model('facenet_keras.h5')
+predictor_path = 'shape_predictor_5_face_landmarks.dat'
+sp = dlib.shape_predictor(predictor_path)
+MyFaceNet_new = FaceNet()
 
 def create_signature(source,
            weights = 'yolov7-lite-t.pt',
@@ -37,9 +39,7 @@ def create_signature(source,
            line_thickness = 3,
            hide_labels = False,
            hide_conf = False,
-           kpt_label = 5,
-           create_signature = False,
-           recognize = True):
+           kpt_label = 5):
 
     # Initialize
     set_logging()
@@ -65,9 +65,6 @@ def create_signature(source,
         modelc = load_classifier(name='resnet101', n=2)  # initialize
         modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
 
-    # Set Dataloader
-    vid_path, vid_writer = None, None
-
     # Read image
     #im0s = cv2.imread(source)
     #img0 = img # BGR
@@ -88,21 +85,20 @@ def create_signature(source,
     t0 = time.time()
 
     img = torch.from_numpy(img).to(device)
-    img = img.half() if half else img.float()  # uint8 to fp16/32
-    img /= 255.0  # 0 - 255 to 0.0 - 1.0
+    img = img.half() if half else img.float()  # uint8 to fp16/32, mengubah array menjadi float
+    img /= 255.0  # mengubah angka aray dari 0 - 255 to 0.0 - 1.0
     if img.ndimension() == 3:
-        img = img.unsqueeze(0)
+        img = img.unsqueeze(0) #returns a new tensor with a dimension of size one inserted at the specified position dim.
 
     # Inference
-    t1 = time_synchronized()
-    pred = model(img, augment=augment)[0]
+    pred = model(img, augment=augment)[0] #Prediksi letak wajah pada gambar
     print(pred[...,4].max())
+    
     # Apply NMS
-    pred = non_max_suppression(pred, conf_thres, iou_thres, classes=classes, agnostic=agnostic_nms, kpt_label=kpt_label)
-    t2 = time_synchronized()
+    pred = non_max_suppression(pred, conf_thres, iou_thres, classes=classes, agnostic=agnostic_nms, kpt_label=kpt_label) 
 
     # Apply Classifier
-    if classify:
+    if classify: 
         pred = apply_classifier(pred, modelc, img, im0s)
 
     # Process detections
@@ -122,10 +118,14 @@ def create_signature(source,
                 n = (det[:, 5] == c).sum()  # detections per class
                 s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-
+            confi = 0
             # Write results
             for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):
-                 # Add bbox to image
+                if conf > confi:
+                    confi = conf
+                
+            for det_index, (*xyxy, conf, cls) in enumerate(reversed(det[:,:6])):   
+                # Add bbox to image
                 c = int(cls)  # integer class
                 label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
                 kpts = det[det_index, 6:]
@@ -138,24 +138,35 @@ def create_signature(source,
                 b = xyxy2xywh(xyxy1)  # boxes
                 b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
                 xyxy1 = xywh2xyxy(b).long()
-                clip_coords(xyxy1, im0.shape)
-                crop = im0[int(xyxy1[0, 1]):int(xyxy1[0, 3]), int(xyxy1[0, 0]):int(xyxy1[0, 2])] 
+                clip_coords(xyxy1, im0.shape) #Memasukkan koordinat sebagai panjang dan tinggi gambar
 
-                gb1 = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-                
-                gb1 = Image.fromarray(gb1)                       
-                gb1 = gb1.resize((160,160))
-                gb1 = asarray(gb1)
-                
-                gb1 = gb1.astype('float32')
-                mean, std = gb1.mean(), gb1.std()
-                gb1 = (gb1 - mean) / std
+                if conf == confi:              
+                    #Convert koordinat tensor menjadi list
+                    xyxy2 = xyxy1.squeeze().tolist()
+                    x1,x2,x3,x4=xyxy2[0],xyxy2[1],xyxy2[2],xyxy2[3]
 
-                gb1 = expand_dims(gb1, axis=0)
-                signature = MyFaceNet.predict(gb1)
+                    #Menentukan lokasi wajah dengan koordinat masukan
+                    face_location = dlib.rectangle(x1,x2,x3,x4)
+                    faces = dlib.full_object_detections()
 
-                xyxy_res=xyxy1.numpy()
-                return signature,xyxy1
+                    #Mendapatkan landmark dari setiap wajah
+                    faces.append(sp(im0s, face_location))
+
+                    #Menormalisasi bentuk wajah
+                    image = dlib.get_face_chip(im0s, faces[0])
+
+                    #Konversi BGR menjadi RGB
+                    gb1 = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+                    #Konversi format gambar OpenCV menjadi PIL
+                    gb1 = Image.fromarray(gb1)                       
+                    gb1 = gb1.resize((160,160))
+                    gb1 = asarray(gb1)
+                    gb1 = expand_dims(gb1, axis=0) #Menambah dimensi
+
+                    #Mengekstrak fitur wajah menjadi vektor dengen pre-trained model
+                    signature = MyFaceNet_new.embeddings(gb1)
+                    return signature,xyxy1
         else:
             return 'gagal',[]
 

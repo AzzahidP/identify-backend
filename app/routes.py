@@ -39,7 +39,7 @@ def verification():
         im_output_b64_str = im_output_b64.decode("utf-8")     
         
         # Mencari identitas yang sesuai
-        min_dist=10
+        min_dist=0.85
         identity= userController.verify_from_db(min_dist, vector_input)
 
         if input['nama']==identity:
