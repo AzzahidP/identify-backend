@@ -12,5 +12,8 @@ app.config.from_object(AppConfig)
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-from app.dbmodel import user
+from app.dbmodel import ageitgeyUser, facenetUser
 from app import routes
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port='5000')
